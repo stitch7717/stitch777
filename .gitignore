@@ -1,0 +1,21 @@
+# Java / Maven
+backend/target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# Node / Vite
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# 运行时产物
+backups/
+*.log
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.DS_Store
