@@ -46,7 +46,7 @@ public class IpWhitelistFilter extends OncePerRequestFilter {
                             // 简单 CIDR /24 支持
                             || (ip.contains("/") && cidrMatch(remote, ip)));
             if (!pass) {
-                response.setStatus(200);
+                response.setStatus(403);
                 response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                 response.setCharacterEncoding(StandardCharsets.UTF_8.name());
                 response.getWriter().write(objectMapper.writeValueAsString(

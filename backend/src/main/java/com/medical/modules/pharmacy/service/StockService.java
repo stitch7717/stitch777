@@ -85,7 +85,7 @@ public class StockService {
                 .eq(BizStock::getDrugId, request.getDrugId())
                 .apply("quantity >= {0}", request.getQuantity()));
         if (updated == 0) {
-            throw new BusinessException("库存不足");
+            throw new BusinessException(409, "库存不足");
         }
         saveRecord(request.getDrugId(), BizStockRecord.TYPE_OUT, request.getQuantity(),
                 request.getBatchNo(), request.getRemark());
@@ -118,7 +118,7 @@ public class StockService {
                     .eq(BizStock::getDrugId, e.getKey())
                     .apply("quantity >= {0}", e.getValue()));
             if (updated == 0) {
-                throw new BusinessException("库存不足，发药失败：药品ID=" + e.getKey());
+                throw new BusinessException(409, "库存不足，发药失败：药品ID=" + e.getKey());
             }
         }
         // 状态迁移仲裁
@@ -127,7 +127,7 @@ public class StockService {
                 .eq(BizPrescription::getId, presc.getId())
                 .in(BizPrescription::getStatus, BizPrescription.ST_AUDITED, BizPrescription.ST_CHARGED));
         if (updated == 0) {
-            throw new BusinessException("发药失败：处方状态已变更");
+            throw new BusinessException(409, "发药失败：处方状态已变更");
         }
         for (Map.Entry<Long, Integer> e : needByDrug.entrySet()) {
             saveRecord(e.getKey(), BizStockRecord.TYPE_OUT, e.getValue(), null, "发药：" + prescNo);
@@ -162,7 +162,7 @@ public class StockService {
                 .eq(BizPrescription::getId, presc.getId())
                 .eq(BizPrescription::getStatus, BizPrescription.ST_DISPENSED));
         if (updated == 0) {
-            throw new BusinessException("退药失败：处方状态已变更");
+            throw new BusinessException(409, "退药失败：处方状态已变更");
         }
         for (Map.Entry<Long, Integer> e : byDrug.entrySet()) {
             saveRecord(e.getKey(), BizStockRecord.TYPE_IN, e.getValue(), null, "退药：" + prescNo);

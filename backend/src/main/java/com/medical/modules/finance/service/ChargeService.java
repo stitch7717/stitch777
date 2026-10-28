@@ -123,14 +123,19 @@ public class ChargeService {
      */
     @Transactional
     public Map<String, Object> charge(ChargeRequest request) {
-        BizRegistration reg = registrationMapper.selectById(request.getVisitId());
+        // 行锁就诊：同一就诊的并发收费在此串行化，锁内重查已收费状态
+        BizRegistration reg = registrationMapper.selectByIdForUpdate(request.getVisitId());
         if (reg == null) {
             throw new BusinessException("就诊不存在");
         }
+        if (existsPaid(reg)) {
+            throw new BusinessException(409, "该就诊已完成收费，请勿重复操作");
+        }
         LoginUser operator = SecurityUtils.getCurrentUser();
 
-        List<Map<String, Object>> items = pendingDetail(request.getVisitId())
-                .get("items") == null ? List.of() : (List<Map<String, Object>>) pendingDetail(request.getVisitId()).get("items");
+        Object rawItems = pendingDetail(request.getVisitId()).get("items");
+        List<Map<String, Object>> items = rawItems == null
+                ? List.of() : (List<Map<String, Object>>) rawItems;
         if (items.isEmpty()) {
             throw new BusinessException("该就诊没有待收项目");
         }
@@ -203,7 +208,7 @@ public class ChargeService {
             throw new BusinessException("收费单不存在");
         }
         if (charge.getPayStatus() != 1) {
-            throw new BusinessException("该收费单不是已支付状态");
+            throw new BusinessException(409, "该收费单不是已支付状态，请刷新后重试");
         }
         LoginUser operator = SecurityUtils.getCurrentUser();
         int updated = chargeMapper.update(null, Wrappers.<BizCharge>lambdaUpdate()
@@ -213,7 +218,7 @@ public class ChargeService {
                 .eq(BizCharge::getId, chargeId)
                 .eq(BizCharge::getPayStatus, 1));
         if (updated == 0) {
-            throw new BusinessException("退费失败，请刷新重试");
+            throw new BusinessException(409, "退费失败，该收费单状态已变更，请刷新后重试");
         }
         // 有效发票自动作废（退费后可重开）
         invoiceMapper.update(null, Wrappers.<com.medical.modules.finance.entity.BizInvoice>lambdaUpdate()

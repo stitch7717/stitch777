@@ -46,14 +46,14 @@ public class SecurityConfig {
                         .anyRequest().authenticated())
                 .exceptionHandling(handling -> handling
                         .authenticationEntryPoint((request, response, ex) -> {
-                            response.setStatus(200);
+                            response.setStatus(401);
                             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                             response.setCharacterEncoding(StandardCharsets.UTF_8.name());
                             response.getWriter().write(
                                     objectMapper.writeValueAsString(Result.error(401, "未登录或登录已过期")));
                         })
                         .accessDeniedHandler((request, response, ex) -> {
-                            response.setStatus(200);
+                            response.setStatus(403);
                             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                             response.setCharacterEncoding(StandardCharsets.UTF_8.name());
                             response.getWriter().write(

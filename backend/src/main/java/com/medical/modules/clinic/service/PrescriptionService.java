@@ -165,7 +165,7 @@ public class PrescriptionService {
                 .eq(BizPrescription::getId, id)
                 .eq(BizPrescription::getStatus, BizPrescription.ST_PENDING));
         if (updated == 0) {
-            throw new BusinessException("审核失败：处方不是待审核状态");
+            throw new BusinessException(409, "审核失败：处方不是待审核状态");
         }
     }
 
@@ -179,7 +179,7 @@ public class PrescriptionService {
             throw new BusinessException("处方不存在");
         }
         if (presc.getStatus() != BizPrescription.ST_PENDING) {
-            throw new BusinessException("仅待审核处方可作废");
+            throw new BusinessException(409, "仅待审核处方可作废");
         }
         prescriptionMapper.deleteById(id);
     }

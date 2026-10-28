@@ -33,7 +33,19 @@ request.interceptors.response.use(
     return Promise.reject(new Error(res.msg || '请求失败'))
   },
   (error) => {
-    ElMessage.error(error.message || '网络异常')
+    const res = error.response?.data
+    if (error.response?.status === 401 || res?.code === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('userInfo')
+      ElMessage.error(res?.msg || '未登录或登录已过期')
+      router.push('/login')
+      return Promise.reject(error)
+    }
+    if (error.response?.status === 409 || res?.code === 409) {
+      ElMessage.error(res?.msg || '数据已变更，请刷新后重试')
+      return Promise.reject(error)
+    }
+    ElMessage.error(res?.msg || error.message || '网络异常')
     return Promise.reject(error)
   }
 )
