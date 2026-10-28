@@ -4,6 +4,9 @@ backend/target/
 *.jar
 !.mvn/wrapper/maven-wrapper.jar
 
+# 本地敏感配置（数据库密码 / JWT 密钥 / AES 密钥）
+backend/src/main/resources/application-local.yml
+
 # Node / Vite
 frontend/node_modules/
 frontend/dist/

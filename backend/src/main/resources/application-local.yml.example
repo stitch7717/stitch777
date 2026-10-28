@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    password: "your-mysql-password"
+
+app:
+  jwt:
+    # 至少 32 字节；生成方式：python -c "import secrets; print(secrets.token_urlsafe(48))"
+    secret: "replace-with-a-random-secret-at-least-32-bytes"
+  crypto:
+    # AES-256 密钥（Base64 编码的 32 字节）；生成方式：python -c "import os,base64; print(base64.b64encode(os.urandom(32)).decode())"
+    aes-key: "replace-with-base64-encoded-32-bytes"
+    # 身份证检索列 HMAC 密钥（至少 16 字节）；生成方式：python -c "import secrets; print(secrets.token_urlsafe(32))"
+    id-card-pepper: "replace-with-a-random-pepper-at-least-16-bytes"
