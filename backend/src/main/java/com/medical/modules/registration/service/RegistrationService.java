@@ -9,6 +9,7 @@ import com.medical.modules.patient.entity.BizPatient;
 import com.medical.modules.patient.mapper.PatientMapper;
 import com.medical.modules.registration.entity.BizRegistration;
 import com.medical.modules.registration.entity.BizSchedule;
+import com.medical.modules.registration.mapper.QueueSeqMapper;
 import com.medical.modules.registration.mapper.RegistrationMapper;
 import com.medical.modules.registration.mapper.ScheduleMapper;
 import com.medical.modules.system.entity.SysDept;
@@ -17,6 +18,7 @@ import com.medical.modules.system.mapper.SysDeptMapper;
 import com.medical.modules.system.mapper.SysUserMapper;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +39,7 @@ public class RegistrationService {
 
     private final RegistrationMapper registrationMapper;
     private final ScheduleMapper scheduleMapper;
+    private final QueueSeqMapper queueSeqMapper;
     private final PatientMapper patientMapper;
     private final SysUserMapper userMapper;
     private final SysDeptMapper deptMapper;
@@ -78,11 +81,16 @@ public class RegistrationService {
         reg.setScheduleId(schedule.getId());
         reg.setRegType(schedule.getRegType());
         reg.setRegFee(schedule.getRegFee());
-        reg.setQueueNo(nextQueueNo(schedule.getDeptId()));
+        reg.setQueueNo(nextQueueNo(schedule.getDeptId(), LocalDate.now()));
         reg.setStatus(BizRegistration.ST_WAITING);
         reg.setRegTime(LocalDateTime.now());
         reg.setCreatorId(operator.getId());
-        registrationMapper.insert(reg);
+        try {
+            registrationMapper.insert(reg);
+        } catch (DuplicateKeyException e) {
+            // 唯一键 uk_patient_schedule_active 兜底并发重复挂号；事务回滚会同时归还号源
+            throw new BusinessException(409, "该患者在该排班已有有效挂号，请勿重复挂号");
+        }
 
         String regNo = "REG" + LocalDate.now().format(DATE_FMT) + String.format("%04d", reg.getId());
         BizRegistration patch = new BizRegistration();
@@ -115,7 +123,7 @@ public class RegistrationService {
                 .eq(BizRegistration::getId, id)
                 .eq(BizRegistration::getStatus, BizRegistration.ST_WAITING));
         if (updated == 0) {
-            throw new BusinessException("退号失败，请刷新重试");
+            throw new BusinessException(409, "退号失败，挂号状态已变更，请刷新后重试");
         }
         scheduleMapper.update(null, Wrappers.<BizSchedule>lambdaUpdate()
                 .setSql("remain_num = remain_num + 1")
@@ -156,7 +164,7 @@ public class RegistrationService {
                 .eq(BizRegistration::getId, id)
                 .eq(BizRegistration::getStatus, BizRegistration.ST_WAITING));
         if (updated == 0) {
-            throw new BusinessException("叫号失败：该号已叫或已退");
+            throw new BusinessException(409, "叫号失败：该号已叫或已退");
         }
     }
 
@@ -170,7 +178,7 @@ public class RegistrationService {
                 .eq(BizRegistration::getId, id)
                 .eq(BizRegistration::getStatus, BizRegistration.ST_IN_CONSULT));
         if (updated == 0) {
-            throw new BusinessException("仅就诊中状态可完成");
+            throw new BusinessException(409, "仅就诊中状态可完成");
         }
     }
 
@@ -198,12 +206,14 @@ public class RegistrationService {
                 }).toList());
     }
 
-    private Integer nextQueueNo(Long deptId) {
-        var max = registrationMapper.selectOne(Wrappers.<BizRegistration>query()
-                .select("MAX(queue_no) AS queue_no")
-                .eq("dept_id", deptId)
-                .apply("DATE(reg_time) = {0}", LocalDate.now()));
-        return (max == null || max.getQueueNo() == null) ? 1 : max.getQueueNo() + 1;
+    /**
+     * 排队号：按「科室 + 日期」在计数器表内原子自增。
+     * INSERT ... ON DUPLICATE KEY UPDATE 会持有行锁到事务结束，
+     * 并发挂号在同一科室/日期上串行取号，不再出现 MAX()+1 的重复。
+     */
+    private Integer nextQueueNo(Long deptId, LocalDate date) {
+        queueSeqMapper.bump(deptId, date);
+        return queueSeqMapper.current(deptId, date);
     }
 
     private String doctorName(Long doctorId) {
