@@ -1,0 +1,24 @@
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/medical_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+
+app:
+  jwt:
+    # 仅测试使用，长度 >= 32 字节
+    secret: "test-only-jwt-secret-0123456789-abcdefghijklmnopqrstuvwxyz"
+    expire-minutes: 120
+  crypto:
+    # 仅测试使用：Base64 编码的 32 字节密钥
+    aes-key: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+    id-card-pepper: "test-only-id-card-pepper-0123456789"
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+logging:
+  level:
+    com.medical: warn
