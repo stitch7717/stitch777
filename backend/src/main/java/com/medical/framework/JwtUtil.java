@@ -17,15 +17,23 @@ public class JwtUtil {
     private final JwtProperties properties;
 
     private SecretKey key() {
-        return Keys.hmacShaKeyFor(properties.getSecret().getBytes(StandardCharsets.UTF_8));
+        String secret = properties.getSecret();
+        if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException(
+                    "app.jwt.secret 未配置或长度不足 32 字节。"
+                            + "本地开发请在 application-local.yml 中配置，部署时通过 JWT_SECRET 环境变量注入");
+        }
+        return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generate(Long userId, String username) {
+    public String generate(Long userId, String username, int tokenVersion) {
         Date now = new Date();
         Date expire = new Date(now.getTime() + properties.getExpireMinutes() * 60 * 1000);
         return Jwts.builder()
                 .subject(String.valueOf(userId))
                 .claim("username", username)
+                // ver 与 sys_user.token_version 比对：改密后版本 +1，旧 token 立即失效
+                .claim("ver", tokenVersion)
                 .issuedAt(now)
                 .expiration(expire)
                 .signWith(key())

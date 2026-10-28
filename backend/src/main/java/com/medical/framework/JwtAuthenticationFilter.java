@@ -49,6 +49,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Long userId = Long.valueOf(claims.getSubject());
                 SysUser user = userMapper.selectById(userId);
                 if (user != null && user.getStatus() == 1 && user.getDeleted() == 0) {
+                    // 改密/强制下线后 token_version 已 +1，旧 token 在这里失效
+                    Integer issuedVersion = claims.get("ver", Integer.class);
+                    int currentVersion = user.getTokenVersion() == null ? 0 : user.getTokenVersion();
+                    if ((issuedVersion == null ? 0 : issuedVersion) != currentVersion) {
+                        filterChain.doFilter(request, response);
+                        return;
+                    }
                     String roleCode = null;
                     if (user.getRoleId() != null) {
                         SysRole role = roleMapper.selectById(user.getRoleId());

@@ -90,11 +90,13 @@ public class SysUserAdminService {
     /** 重置密码：缺省重置为 123456 */
     @Transactional
     public void resetPassword(Long id, String password) {
-        require(id);
+        SysUser user = require(id);
         String raw = StringUtils.hasText(password) ? password : "123456";
         SysUser patch = new SysUser();
         patch.setId(id);
         patch.setPassword(passwordEncoder.encode(raw));
+        // 版本 +1：该账号所有已签发的 token 立即失效，需要重新登录
+        patch.setTokenVersion((user.getTokenVersion() == null ? 0 : user.getTokenVersion()) + 1);
         userMapper.updateById(patch);
     }
 

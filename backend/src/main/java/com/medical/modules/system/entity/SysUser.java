@@ -32,6 +32,9 @@ public class SysUser {
 
     private Integer status;
 
+    /** token 版本号：改密时 +1，使已签发的 JWT 立即失效 */
+    private Integer tokenVersion;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 

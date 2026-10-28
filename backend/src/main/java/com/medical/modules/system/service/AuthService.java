@@ -62,7 +62,8 @@ public class AuthService {
         auditService.saveLoginLog(request0.getUsername(), true, "登录成功", ip);
 
         LoginResponse resp = new LoginResponse();
-        resp.setToken(jwtUtil.generate(user.getId(), user.getUsername()));
+        resp.setToken(jwtUtil.generate(user.getId(), user.getUsername(),
+                user.getTokenVersion() == null ? 0 : user.getTokenVersion()));
         LoginResponse.UserInfo info = new LoginResponse.UserInfo();
         info.setId(user.getId());
         info.setRealName(user.getRealName());
