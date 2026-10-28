@@ -12,6 +12,7 @@ import com.medical.modules.system.service.AuthService;
 import com.medical.modules.system.service.SysUserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -33,6 +34,7 @@ public class SysUserController {
         return Result.ok();
     }
 
+    @PreAuthorize("hasAuthority('system:user:list')")
     @GetMapping("/page")
     public Result<PageResult<UserPageVO>> page(PageQuery query,
                                                Long deptId, Long roleId, Integer status) {

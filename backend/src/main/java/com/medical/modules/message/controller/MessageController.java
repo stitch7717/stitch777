@@ -7,6 +7,7 @@ import com.medical.modules.message.entity.SysMessage;
 import com.medical.modules.message.entity.SysNotice;
 import com.medical.modules.message.service.MessageService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -40,7 +41,8 @@ public class MessageController {
         return Result.ok(Map.of("count", messageService.unreadCount()));
     }
 
-    /** 发布公告（仅登录态；页面按需收窄） */
+    /** 发布公告：仅公告管理权限 */
+    @PreAuthorize("hasAuthority('message:notice')")
     @PostMapping("/api/notice")
     public Result<Map<String, Long>> publish(@RequestBody SysNotice notice) {
         return Result.ok(Map.of("id", messageService.publishNotice(notice)));
@@ -51,6 +53,7 @@ public class MessageController {
         return Result.ok(messageService.noticePage(query, noticeType, deptId));
     }
 
+    @PreAuthorize("hasAuthority('message:notice')")
     @DeleteMapping("/api/notice/{id}")
     public Result<Void> deleteNotice(@PathVariable Long id) {
         messageService.deleteNotice(id);
