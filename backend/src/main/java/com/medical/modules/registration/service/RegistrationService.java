@@ -140,6 +140,8 @@ public class RegistrationService {
                 .apply("DATE(reg_time) = {0}", LocalDate.now())
                 .in(BizRegistration::getStatus, BizRegistration.ST_WAITING, BizRegistration.ST_IN_CONSULT)
                 .orderByAsc(BizRegistration::getQueueNo));
+        // 一次批量查医生姓名，避免每行一次 selectById（N+1）
+        Map<Long, String> names = doctorNames(list.stream().map(BizRegistration::getDoctorId).toList());
         return list.stream().map(r -> {
             QueueVO vo = new QueueVO();
             vo.setId(r.getId());
@@ -147,7 +149,7 @@ public class RegistrationService {
             vo.setPatientName(r.getPatientName());
             vo.setRegNo(r.getRegNo());
             vo.setRegType(r.getRegType());
-            vo.setDoctorName(doctorName(r.getDoctorId()));
+            vo.setDoctorName(names.get(r.getDoctorId()));
             vo.setStatus(r.getStatus());
             vo.setRegTime(r.getRegTime() == null ? null : r.getRegTime().format(TIME_FMT));
             return vo;
@@ -191,15 +193,17 @@ public class RegistrationService {
                         .eq(patientId != null, BizRegistration::getPatientId, patientId)
                         .eq(status != null, BizRegistration::getStatus, status)
                         .orderByDesc(BizRegistration::getId));
+        List<BizRegistration> records = page.getRecords();
+        Map<Long, String> names = doctorNames(records.stream().map(BizRegistration::getDoctorId).toList());
         return com.medical.common.PageResult.of(page.getTotal(), page.getCurrent(), page.getSize(),
-                page.getRecords().stream().map(r -> {
+                records.stream().map(r -> {
                     QueueVO vo = new QueueVO();
                     vo.setId(r.getId());
                     vo.setQueueNo(r.getQueueNo());
                     vo.setPatientName(r.getPatientName());
                     vo.setRegNo(r.getRegNo());
                     vo.setRegType(r.getRegType());
-                    vo.setDoctorName(doctorName(r.getDoctorId()));
+                    vo.setDoctorName(names.get(r.getDoctorId()));
                     vo.setStatus(r.getStatus());
                     vo.setRegTime(r.getRegTime() == null ? null : r.getRegTime().format(TIME_FMT));
                     return vo;
@@ -216,12 +220,18 @@ public class RegistrationService {
         return queueSeqMapper.current(deptId, date);
     }
 
-    private String doctorName(Long doctorId) {
-        SysUser doctor = userMapper.selectById(doctorId);
-        if (doctor == null) {
-            return null;
+    /**
+     * 批量查医生姓名：一次 selectBatchIds，避免列表/队列每行查一次用户表。
+     */
+    private Map<Long, String> doctorNames(List<Long> doctorIds) {
+        List<Long> ids = doctorIds.stream().filter(id -> id != null).distinct().toList();
+        if (ids.isEmpty()) {
+            return Map.of();
         }
-        return doctor.getRealName() != null ? doctor.getRealName() : doctor.getUsername();
+        return userMapper.selectBatchIds(ids).stream()
+                .collect(Collectors.toMap(
+                        SysUser::getId,
+                        u -> u.getRealName() != null ? u.getRealName() : u.getUsername()));
     }
 
     @Data

@@ -57,6 +57,16 @@ class PermissionEnforcementTest {
                 .andExpect(jsonPath("$.code").value(401));
     }
 
+    @Test
+    @DisplayName("不存在的接口返回 404，而不是 500")
+    void unknownApi_returns404() throws Exception {
+        String token = tokenFor("admin");
+
+        mockMvc.perform(get("/api/does-not-exist")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+    }
+
     private String tokenFor(String username) {
         Long id = jdbcTemplate.queryForObject(
                 "SELECT id FROM sys_user WHERE username = ?", Long.class, username);

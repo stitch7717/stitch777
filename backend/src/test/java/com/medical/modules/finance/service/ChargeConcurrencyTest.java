@@ -85,6 +85,7 @@ class ChargeConcurrencyTest {
         scheduleMapper.insert(schedule);
 
         BizRegistration registration = new BizRegistration();
+        registration.setRegNo("TST-CH-" + System.nanoTime());
         registration.setPatientId(patient.getId());
         registration.setPatientName(patient.getName());
         registration.setDoctorId(2L);
@@ -122,6 +123,18 @@ class ChargeConcurrencyTest {
                 "SELECT COUNT(*) FROM biz_charge WHERE visit_id = ? AND deleted = 0",
                 Integer.class, visitId);
         assertThat(chargeCount).isEqualTo(1);
+
+        Integer chargeType = jdbcTemplate.queryForObject(
+                "SELECT charge_type FROM biz_charge WHERE visit_id = ? AND deleted = 0",
+                Integer.class, visitId);
+        assertThat(chargeType).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("待收费列表：未收费的就诊出现在批量结果中")
+    void pendingList_containsUnpaidVisit() {
+        List<Map<String, Object>> list = chargeService.pendingList();
+        assertThat(list).anyMatch(m -> visitId.equals(m.get("visitId")));
     }
 
     @Test

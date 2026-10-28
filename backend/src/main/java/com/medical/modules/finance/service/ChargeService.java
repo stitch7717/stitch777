@@ -55,23 +55,30 @@ public class ChargeService {
                 .apply("DATE(reg_time) = {0}", LocalDate.now())
                 .ne(BizRegistration::getStatus, BizRegistration.ST_CANCELLED)
                 .orderByDesc(BizRegistration::getId));
-
-        return regs.stream().filter(r -> hasPending(r.getId(), r)).map(r -> Map.<String, Object>of(
-                "visitId", r.getId(),
-                "regNo", r.getRegNo(),
-                "patientName", r.getPatientName(),
-                "status", r.getStatus(),
-                "regTime", r.getRegTime() == null ? "" : r.getRegTime().format(FMT))).toList();
-    }
-
-    private boolean hasPending(Long visitId, BizRegistration reg) {
-        if (!existsPaid(reg)) {
-            return true;
+        if (regs.isEmpty()) {
+            return List.of();
         }
-        Long cnt = prescriptionMapper.selectCount(Wrappers.<BizPrescription>lambdaQuery()
-                .eq(BizPrescription::getVisitId, visitId)
-                .eq(BizPrescription::getStatus, BizPrescription.ST_AUDITED));
-        return cnt > 0;
+
+        // 批量查「已支付」和「有待审核处方」的就诊，避免每条挂号两次 COUNT（N+1）
+        List<Long> visitIds = regs.stream().map(BizRegistration::getId).toList();
+        var paidVisitIds = chargeMapper.selectList(Wrappers.<BizCharge>lambdaQuery()
+                        .in(BizCharge::getVisitId, visitIds)
+                        .eq(BizCharge::getPayStatus, 1))
+                .stream().map(BizCharge::getVisitId).collect(Collectors.toSet());
+        var auditedVisitIds = prescriptionMapper.selectList(Wrappers.<BizPrescription>lambdaQuery()
+                        .in(BizPrescription::getVisitId, visitIds)
+                        .eq(BizPrescription::getStatus, BizPrescription.ST_AUDITED))
+                .stream().map(BizPrescription::getVisitId).collect(Collectors.toSet());
+
+        return regs.stream()
+                .filter(r -> !paidVisitIds.contains(r.getId()) || auditedVisitIds.contains(r.getId()))
+                .map(r -> Map.<String, Object>of(
+                        "visitId", r.getId(),
+                        "regNo", r.getRegNo() == null ? "" : r.getRegNo(),
+                        "patientName", r.getPatientName(),
+                        "status", r.getStatus(),
+                        "regTime", r.getRegTime() == null ? "" : r.getRegTime().format(FMT)))
+                .toList();
     }
 
     /** 该就诊是否已有有效已支付收费单（已退费不算已收，可重收挂号费） */
@@ -143,11 +150,16 @@ public class ChargeService {
                 .map(i -> (BigDecimal) i.get("amount"))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        // 只有挂号费（itemType=诊疗 且没有来源单）时标记为挂号；否则标记为门诊
+        boolean onlyRegistrationFee = items.stream().allMatch(item ->
+                Integer.valueOf(BizChargeItem.TYPE_TREAT).equals(item.get("itemType"))
+                        && (item.get("sourceId") == null || "".equals(item.get("sourceId"))));
+
         BizCharge charge = new BizCharge();
         charge.setPatientId(reg.getPatientId());
         charge.setPatientName(reg.getPatientName());
         charge.setVisitId(reg.getId());
-        charge.setChargeType(BizCharge.TYPE_CLINIC);
+        charge.setChargeType(onlyRegistrationFee ? BizCharge.TYPE_REG : BizCharge.TYPE_CLINIC);
         charge.setTotalAmount(total);
         charge.setDiscountAmount(BigDecimal.ZERO);
         charge.setActualAmount(total);
@@ -211,6 +223,21 @@ public class ChargeService {
             throw new BusinessException(409, "该收费单不是已支付状态，请刷新后重试");
         }
         LoginUser operator = SecurityUtils.getCurrentUser();
+
+        // 先查处方：已发药的处方必须先退药，不能直接退费
+        List<Long> prescIds = itemMapper.selectList(Wrappers.<BizChargeItem>lambdaQuery()
+                        .eq(BizChargeItem::getChargeId, chargeId)
+                        .isNotNull(BizChargeItem::getSourceId))
+                .stream().map(BizChargeItem::getSourceId).distinct().toList();
+        if (!prescIds.isEmpty()) {
+            Long dispensed = prescriptionMapper.selectCount(Wrappers.<BizPrescription>lambdaQuery()
+                    .in(BizPrescription::getId, prescIds)
+                    .eq(BizPrescription::getStatus, BizPrescription.ST_DISPENSED));
+            if (dispensed > 0) {
+                throw new BusinessException(409, "存在已发药处方，请先退药再退费");
+            }
+        }
+
         int updated = chargeMapper.update(null, Wrappers.<BizCharge>lambdaUpdate()
                 .set(BizCharge::getPayStatus, 2)
                 .set(BizCharge::getRefundTime, LocalDateTime.now())
@@ -226,9 +253,6 @@ public class ChargeService {
                 .eq(com.medical.modules.finance.entity.BizInvoice::getChargeId, chargeId)
                 .eq(com.medical.modules.finance.entity.BizInvoice::getStatus, 0));
         // 处方退费 2→4 终态
-        List<Long> prescIds = itemMapper.selectList(Wrappers.<BizChargeItem>lambdaQuery()
-                        .eq(BizChargeItem::getChargeId, chargeId).isNotNull(BizChargeItem::getSourceId))
-                .stream().map(BizChargeItem::getSourceId).distinct().toList();
         for (Long pid : prescIds) {
             prescriptionMapper.update(null, Wrappers.<BizPrescription>lambdaUpdate()
                     .set(BizPrescription::getStatus, BizPrescription.ST_RETURNED)
