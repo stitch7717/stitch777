@@ -1,0 +1,68 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: his-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?请在 .env 中设置 DB_PASSWORD}
+      MYSQL_DATABASE: medical
+      TZ: Asia/Shanghai
+    ports:
+      # 只绑定本机，避免 3306 暴露到局域网
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    container_name: his-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: ./backend
+    container_name: his-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      # 首次启动把种子数据里的明文身份证加密并补齐 HMAC 检索列（幂等）
+      APP_BACKFILL: "true"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      DB_URL: jdbc:mysql://mysql:3306/medical?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      DB_USERNAME: root
+      DB_PASSWORD: ${DB_PASSWORD:?请在 .env 中设置 DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
+      AES_KEY: ${AES_KEY:?请在 .env 中设置 AES_KEY}
+      ID_CARD_PEPPER: ${ID_CARD_PEPPER:?请在 .env 中设置 ID_CARD_PEPPER}
+      CORS_ALLOWED_ORIGINS: http://localhost:5180
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    container_name: his-frontend
+    ports:
+      - "5180:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql-data:
+  redis-data:

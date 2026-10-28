@@ -36,9 +36,14 @@ class AuthLoginTest {
     @Test
     @DisplayName("错误密码返回 400，不签发 token")
     void loginWithWrongPassword_returns400() throws Exception {
+        // 唯一用户名，避免 Redis 里上一次运行的失败计数把这次锁定
+        String username = "no_such_user_" + System.nanoTime();
+        String body = String.format(
+                "{\"username\":\"%s\",\"password\":\"wrong-password\"}", username);
+
         mockMvc.perform(post("/api/system/user/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"no_such_user_test\",\"password\":\"wrong-password\"}"))
+                        .content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400));
     }

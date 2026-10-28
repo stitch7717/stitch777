@@ -35,7 +35,15 @@ class SensitiveDataEncryptionTest {
 
     @AfterEach
     void tearDown() {
-        createdIds.forEach(id -> jdbcTemplate.update("DELETE FROM biz_patient WHERE id = ?", id));
+        createdIds.forEach(id -> {
+            try {
+                // 走 Service 删除，顺带清掉 Redis 里的手机号缓存
+                patientService.delete(id);
+            } catch (Exception ignored) {
+                // 测试里可能已被清理
+            }
+            jdbcTemplate.update("DELETE FROM biz_patient WHERE id = ?", id);
+        });
         createdIds.clear();
     }
 
@@ -65,7 +73,9 @@ class SensitiveDataEncryptionTest {
     void registerOrGet_reusesExistingArchive() {
         PatientRequest request = request("现场登记测试患者");
         request.setIdCard(null);
-        request.setPhone("13700008888");
+        // 唯一手机号，避免 Redis 中上一次运行的患者缓存干扰
+        request.setPhone("137" + String.format("%08d",
+                Math.floorMod(System.nanoTime(), 100_000_000L)));
 
         Map<String, Object> first = patientService.registerOrGet(request);
         createdIds.add((Long) first.get("id"));

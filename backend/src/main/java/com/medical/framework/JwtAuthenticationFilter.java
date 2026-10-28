@@ -1,15 +1,12 @@
 package com.medical.framework;
 
-import com.medical.modules.system.entity.SysMenu;
 import com.medical.modules.system.entity.SysRole;
-import com.medical.modules.system.entity.SysRoleMenu;
 import com.medical.modules.system.entity.SysUser;
-import com.medical.modules.system.mapper.SysMenuMapper;
 import com.medical.modules.system.mapper.SysRoleMapper;
-import com.medical.modules.system.mapper.SysRoleMenuMapper;
 import com.medical.modules.system.mapper.SysUserMapper;
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.medical.modules.system.service.PermissionCacheService;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,8 +32,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtUtil jwtUtil;
     private final SysUserMapper userMapper;
     private final SysRoleMapper roleMapper;
-    private final SysRoleMenuMapper roleMenuMapper;
-    private final SysMenuMapper menuMapper;
+    private final PermissionCacheService permissionCacheService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
@@ -67,41 +63,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         LoginUser loginUser = new LoginUser(
                                 user.getId(), user.getUsername(), user.getRealName(),
                                 user.getRoleId(), roleCode);
-                        List<SimpleGrantedAuthority> authorities = loadAuthorities(
-                                "admin".equals(roleCode), user.getRoleId());
+                        List<SimpleGrantedAuthority> authorities = permissionCacheService
+                                .getAuthorities("admin".equals(roleCode), user.getRoleId())
+                                .stream().map(SimpleGrantedAuthority::new).toList();
                         UsernamePasswordAuthenticationToken auth =
                                 new UsernamePasswordAuthenticationToken(loginUser, null, authorities);
                         SecurityContextHolder.getContext().setAuthentication(auth);
                     }
                 }
-            } catch (Exception ignored) {
-                // 无效/过期 token：保持未认证状态，由入口点统一返回 401
+            } catch (JwtException | IllegalArgumentException e) {
+                // 只吞掉「token 无效/过期/格式错误」；数据库等异常继续抛出，避免把 500 伪装成 401
             }
         }
         filterChain.doFilter(request, response);
     }
 
-    /**
-     * 权限码集合：admin 全量菜单 perms，其余角色经 role_menu
-     */
-    private List<SimpleGrantedAuthority> loadAuthorities(boolean admin, Long roleId) {
-        List<String> perms;
-        if (admin) {
-            perms = menuMapper.selectList(Wrappers.<SysMenu>lambdaQuery()
-                            .eq(SysMenu::getStatus, 1).isNotNull(SysMenu::getPerms))
-                    .stream().map(SysMenu::getPerms).distinct().toList();
-        } else {
-            List<Long> menuIds = roleMenuMapper.selectList(Wrappers.<SysRoleMenu>lambdaQuery()
-                            .eq(SysRoleMenu::getRoleId, roleId))
-                    .stream().map(SysRoleMenu::getMenuId).distinct().toList();
-            if (menuIds.isEmpty()) {
-                return List.of();
-            }
-            perms = menuMapper.selectList(Wrappers.<SysMenu>lambdaQuery()
-                            .in(SysMenu::getId, menuIds)
-                            .eq(SysMenu::getStatus, 1).isNotNull(SysMenu::getPerms))
-                    .stream().map(SysMenu::getPerms).distinct().toList();
-        }
-        return perms.stream().map(SimpleGrantedAuthority::new).toList();
-    }
 }

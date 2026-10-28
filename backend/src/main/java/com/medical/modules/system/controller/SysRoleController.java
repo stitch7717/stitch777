@@ -1,6 +1,7 @@
 package com.medical.modules.system.controller;
 
 import com.medical.common.Result;
+import com.medical.modules.system.service.PermissionCacheService;
 import com.medical.modules.system.service.SysRoleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -15,6 +16,7 @@ import java.util.Map;
 public class SysRoleController {
 
     private final SysRoleService roleService;
+    private final PermissionCacheService permissionCacheService;
 
     @GetMapping("/list")
     @PreAuthorize("hasAuthority('system:role:list')")
@@ -39,6 +41,7 @@ public class SysRoleController {
     @PreAuthorize("hasAuthority('system:role:edit')")
     public Result<Void> update(@PathVariable Long id, @RequestBody SysRoleService.RoleRequest request) {
         roleService.update(id, request);
+        permissionCacheService.evictRole(id);
         return Result.ok();
     }
 
@@ -47,6 +50,7 @@ public class SysRoleController {
     @PreAuthorize("hasAuthority('system:role:perm')")
     public Result<Void> permission(@PathVariable Long id, @RequestBody Map<String, List<Long>> body) {
         roleService.assignPermissions(id, body.get("menuIds"));
+        permissionCacheService.evictRole(id);
         return Result.ok();
     }
 
@@ -55,6 +59,7 @@ public class SysRoleController {
     @PreAuthorize("hasAuthority('system:role:delete')")
     public Result<Void> delete(@PathVariable Long id) {
         roleService.delete(id);
+        permissionCacheService.evictRole(id);
         return Result.ok();
     }
 }

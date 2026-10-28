@@ -7,6 +7,12 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE:local}
   application:
     name: medical-backend
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 1s
+      connect-timeout: 1s
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: ${DB_URL:jdbc:mysql://localhost:3306/medical?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
@@ -29,6 +35,9 @@ mybatis-plus:
       logic-not-delete-value: 0
 
 app:
+  cors:
+    # 前端地址白名单，逗号分隔；默认只允许本地 Vite 端口
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5180}
   jwt:
     # 至少 32 字节；本地开发放 application-local.yml，部署时通过 JWT_SECRET 注入
     secret: ${JWT_SECRET:}
@@ -39,6 +48,12 @@ app:
     aes-key: ${AES_KEY:}
     # 身份证检索列 HMAC 密钥（至少 16 字节）
     id-card-pepper: ${ID_CARD_PEPPER:}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
 
 logging:
   level:

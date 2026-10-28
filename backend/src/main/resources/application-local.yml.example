@@ -1,6 +1,10 @@
 spring:
   datasource:
     password: "your-mysql-password"
+  # 如果 Redis 设置了密码，取消下面三行注释
+  # data:
+  #   redis:
+  #     password: "your-redis-password"
 
 app:
   jwt:

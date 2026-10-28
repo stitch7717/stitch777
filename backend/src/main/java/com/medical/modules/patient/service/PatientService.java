@@ -6,6 +6,7 @@ import com.medical.common.BusinessException;
 import com.medical.common.PageQuery;
 import com.medical.common.PageResult;
 import com.medical.common.crypto.IdCardHasher;
+import com.medical.modules.patient.dto.PatientBasic;
 import com.medical.modules.patient.dto.PatientPageVO;
 import com.medical.modules.patient.dto.PatientRequest;
 import com.medical.modules.patient.entity.BizPatient;
@@ -29,6 +30,7 @@ public class PatientService {
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final PatientMapper patientMapper;
+    private final PatientCacheService patientCacheService;
     private final com.medical.modules.audit.mapper.SysConfigMapper configMapper;
 
     /** 脱敏开关：security.data-mask=1 时列表手机号/身份证打码（详情/编辑回显保持原值） */
@@ -59,6 +61,7 @@ public class PatientService {
                         .apply(StringUtils.hasText(tag), "FIND_IN_SET({0}, tags)", tag)
                         .orderByDesc(BizPatient::getId));
 
+        boolean mask = maskEnabled();
         List<PatientPageVO> rows = page.getRecords().stream().map(p -> {
             PatientPageVO vo = new PatientPageVO();
             vo.setId(p.getId());
@@ -67,7 +70,7 @@ public class PatientService {
             vo.setGender(p.getGender());
             vo.setAge(p.getBirthDate() == null ? null : Period.between(p.getBirthDate(), LocalDate.now()).getYears());
             vo.setBirthDate(p.getBirthDate() == null ? null : p.getBirthDate().format(DateTimeFormatter.ISO_LOCAL_DATE));
-            vo.setPhone(maskPhone(p.getPhone()));
+            vo.setPhone(maskPhone(p.getPhone(), mask));
             vo.setBloodType(p.getBloodType());
             vo.setCardNo(p.getCardNo());
             vo.setCardStatus(p.getCardStatus());
@@ -92,24 +95,43 @@ public class PatientService {
      */
     @Transactional
     public Map<String, Object> registerOrGet(PatientRequest request) {
-        if (!org.springframework.util.StringUtils.hasText(request.getPhone())) {
+        if (!StringUtils.hasText(request.getPhone())) {
             throw new BusinessException("手机号必填（用于识别已有档案）");
         }
-        if (!org.springframework.util.StringUtils.hasText(request.getName())) {
+        if (!StringUtils.hasText(request.getName())) {
             throw new BusinessException("姓名必填");
         }
+        String phone = request.getPhone().trim();
+
+        // 患者基础信息缓存：只含 id/patientNo/name，命中后直接复用
+        PatientBasic cached = patientCacheService.getByPhone(phone);
+        if (cached != null) {
+            return Map.of("id", cached.id(),
+                    "patientNo", cached.patientNo() == null ? "" : cached.patientNo(),
+                    "name", cached.name() == null ? "" : cached.name(),
+                    "created", false);
+        }
+
         List<BizPatient> exist = patientMapper.selectList(Wrappers.<BizPatient>lambdaQuery()
-                .eq(BizPatient::getPhone, request.getPhone().trim()));
+                .eq(BizPatient::getPhone, phone));
         if (!exist.isEmpty()) {
             // 已有档案直接复用（同号多人时取首个，姓名不同提示）
             BizPatient p = exist.get(0);
-            return Map.of("id", p.getId(), "patientNo", p.getPatientNo(),
-                    "name", p.getName(), "created", false);
+            patientCacheService.putByPhone(phone,
+                    new PatientBasic(p.getId(), p.getPatientNo(), p.getName()));
+            return Map.of("id", p.getId(),
+                    "patientNo", p.getPatientNo() == null ? "" : p.getPatientNo(),
+                    "name", p.getName() == null ? "" : p.getName(),
+                    "created", false);
         }
         Long id = create(request);
         BizPatient p = patientMapper.selectById(id);
-        return Map.of("id", id, "patientNo", p.getPatientNo(),
-                "name", p.getName(), "created", true);
+        patientCacheService.putByPhone(phone,
+                new PatientBasic(p.getId(), p.getPatientNo(), p.getName()));
+        return Map.of("id", id,
+                "patientNo", p.getPatientNo() == null ? "" : p.getPatientNo(),
+                "name", p.getName() == null ? "" : p.getName(),
+                "created", true);
     }
 
     @Transactional
@@ -127,6 +149,7 @@ public class PatientService {
         patch.setPatientNo(String.format("P%05d", patient.getId()));
         patch.setCardNo(String.format("C1%04d", patient.getId()));
         patientMapper.updateById(patch);
+        patientCacheService.evictPhone(request.getPhone());
         return patient.getId();
     }
 
@@ -137,15 +160,20 @@ public class PatientService {
             throw new BusinessException("患者不存在");
         }
         checkIdCardDuplicate(request.getIdCard(), id);
+        String oldPhone = exist.getPhone();
         applyRequest(exist, request);
         patientMapper.updateById(exist);
+        patientCacheService.evictPhone(oldPhone);
+        patientCacheService.evictPhone(request.getPhone());
     }
 
     @Transactional
     public void delete(Long id) {
-        if (patientMapper.selectById(id) == null) {
+        BizPatient patient = patientMapper.selectById(id);
+        if (patient == null) {
             throw new BusinessException("患者不存在");
         }
+        patientCacheService.evictPhone(patient.getPhone());
         patientMapper.deleteById(id);
     }
 
@@ -249,8 +277,8 @@ public class PatientService {
         return list.isEmpty() ? null : String.join(",", list);
     }
 
-    private String maskPhone(String phone) {
-        if (!maskEnabled()) {
+    private String maskPhone(String phone, boolean mask) {
+        if (!mask) {
             return phone;
         }
         if (!StringUtils.hasText(phone) || phone.length() < 7) {

@@ -5,6 +5,7 @@ import com.medical.modules.system.entity.SysMenu;
 import com.medical.modules.system.entity.SysRoleMenu;
 import com.medical.modules.system.mapper.SysMenuMapper;
 import com.medical.modules.system.mapper.SysRoleMenuMapper;
+import com.medical.modules.system.service.PermissionCacheService;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -18,11 +19,13 @@ public class SysMenuAdminController {
 
     private final SysMenuMapper menuMapper;
     private final SysRoleMenuMapper roleMenuMapper;
+    private final PermissionCacheService permissionCacheService;
 
     @PostMapping
     @PreAuthorize("hasAuthority('system:menu:edit')")
     public Result<Void> create(@RequestBody SysMenu menu) {
         save(menu);
+        permissionCacheService.evictAll();
         return Result.ok();
     }
 
@@ -49,6 +52,7 @@ public class SysMenuAdminController {
         if (patch.getSort() != null) exist.setSort(patch.getSort());
         if (patch.getStatus() != null) exist.setStatus(patch.getStatus());
         menuMapper.updateById(exist);
+        permissionCacheService.evictAll();
         return Result.ok();
     }
 
@@ -62,6 +66,8 @@ public class SysMenuAdminController {
         }
         roleMenuMapper.delete(Wrappers.<SysRoleMenu>lambdaQuery().eq(SysRoleMenu::getMenuId, id));
         menuMapper.deleteById(id);
+        // 事务提交后再删缓存，避免并发请求在提交前缓存旧权限
+        permissionCacheService.evictAllAfterCommit();
         return Result.ok();
     }
 }
