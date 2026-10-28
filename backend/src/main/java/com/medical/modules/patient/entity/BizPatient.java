@@ -26,6 +26,9 @@ public class BizPatient {
     @TableField(typeHandler = EncryptTypeHandler.class)
     private String idCard;
 
+    /** 身份证 HMAC-SHA256 检索列（加密列无法直接等值查询） */
+    private String idCardHash;
+
     private String phone;
 
     private String address;

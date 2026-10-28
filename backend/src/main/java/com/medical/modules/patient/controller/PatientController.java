@@ -34,6 +34,13 @@ public class PatientController {
         return Result.ok(patientService.detail(id));
     }
 
+    /** 按身份证号查询（走 HMAC 检索列，不依赖加密列等值匹配） */
+    @GetMapping("/by-id-card")
+    @PreAuthorize("hasAuthority('patient:list')")
+    public Result<BizPatient> byIdCard(@RequestParam String idCard) {
+        return Result.ok(patientService.findByIdCard(idCard));
+    }
+
     @PostMapping
     @PreAuthorize("hasAuthority('patient:add')")
     public Result<Map<String, Long>> create(@Valid @RequestBody PatientRequest request) {

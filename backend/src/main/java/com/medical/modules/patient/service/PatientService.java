@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.medical.common.BusinessException;
 import com.medical.common.PageQuery;
 import com.medical.common.PageResult;
+import com.medical.common.crypto.IdCardHasher;
 import com.medical.modules.patient.dto.PatientPageVO;
 import com.medical.modules.patient.dto.PatientRequest;
 import com.medical.modules.patient.entity.BizPatient;
@@ -190,15 +191,33 @@ public class PatientService {
         return patient;
     }
 
+    /**
+     * 按身份证查询：加密列每次密文不同，只能走 HMAC 检索列。
+     */
+    public BizPatient findByIdCard(String idCard) {
+        String hash = IdCardHasher.hash(idCard);
+        if (hash == null) {
+            throw new BusinessException("身份证号不能为空");
+        }
+        BizPatient patient = patientMapper.selectOne(Wrappers.<BizPatient>lambdaQuery()
+                .eq(BizPatient::getIdCardHash, hash)
+                .last("LIMIT 1"));
+        if (patient == null) {
+            throw new BusinessException("未找到该身份证对应的患者");
+        }
+        return patient;
+    }
+
     private void checkIdCardDuplicate(String idCard, Long excludeId) {
-        if (!StringUtils.hasText(idCard)) {
+        String hash = IdCardHasher.hash(idCard);
+        if (hash == null) {
             return;
         }
         Long count = (long) patientMapper.selectCount(Wrappers.<BizPatient>lambdaQuery()
-                .eq(BizPatient::getIdCard, idCard)
+                .eq(BizPatient::getIdCardHash, hash)
                 .ne(excludeId != null, BizPatient::getId, excludeId));
         if (count > 0) {
-            throw new BusinessException("该身份证号已建档");
+            throw new BusinessException(409, "该身份证号已建档");
         }
     }
 
@@ -207,6 +226,7 @@ public class PatientService {
         patient.setGender(request.getGender());
         patient.setBirthDate(request.getBirthDate());
         patient.setIdCard(request.getIdCard());
+        patient.setIdCardHash(IdCardHasher.hash(request.getIdCard()));
         patient.setPhone(request.getPhone());
         patient.setAddress(request.getAddress());
         patient.setBloodType(request.getBloodType());
